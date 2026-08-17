@@ -2,7 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { validateFile, formatBytes, kindFromMime, MEDIA_LIMITS_BYTES } from "@/lib/media";
+import { validateFile, formatBytes, kindFromMime } from "@/lib/media";
+import { compressImageIfOversized } from "@/lib/clientImageCompression";
 import { cn } from "@/lib/utils";
 import type { FieldProps } from "./shared";
 
@@ -86,47 +87,7 @@ export function MediaUploadField({ field, value, onChange }: FieldProps<Uploaded
     onChange(next);
   }
 
-  /**
- * Real phone photos routinely land at 12–25MB (this is exactly what showed
- * up as a puzzle-image upload that silently never took) — well over the
- * 10MB image limit in lib/media.ts. Rejecting those outright with a small
- * error string under the upload button is easy to miss, and the file just
- * never appears — from the creator's side it looks like "I added a photo
- * and it didn't take it." Downscaling oversized images client-side (long
- * edge capped at 1920px, re-encoded as JPEG) instead means the upload just
- * works: the recipient-facing use cases here (puzzle tiles, memory photos,
- * scratch card art) never need more resolution than that anyway.
- */
-async function compressImageIfOversized(file: File): Promise<File> {
-  if (!file.type.startsWith("image/") || file.type === "image/gif" || file.size <= MEDIA_LIMITS_BYTES.image) {
-    return file;
-  }
-  try {
-    const bitmap = await createImageBitmap(file);
-    const maxDim = 1920;
-    const scale = Math.min(1, maxDim / Math.max(bitmap.width, bitmap.height));
-    const width = Math.max(1, Math.round(bitmap.width * scale));
-    const height = Math.max(1, Math.round(bitmap.height * scale));
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return file;
-    ctx.drawImage(bitmap, 0, 0, width, height);
-    bitmap.close?.();
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.82));
-    if (!blob) return file;
-    const compressedName = file.name.replace(/\.\w+$/, "") + ".jpg";
-    return new File([blob], compressedName, { type: "image/jpeg" });
-  } catch {
-    // Any failure here (unsupported format, canvas issue, ...) just falls
-    // through to the original file — validateFile below still catches an
-    // oversized result and reports it clearly rather than failing silently.
-    return file;
-  }
-}
-
-async function uploadFile(file: File, id: string) {
+  async function uploadFile(file: File, id: string) {
     try {
       const formData = new FormData();
       formData.append("file", file);

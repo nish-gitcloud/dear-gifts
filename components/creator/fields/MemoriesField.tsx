@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { validateFile, kindFromMime } from "@/lib/media";
+import { compressImageIfOversized } from "@/lib/clientImageCompression";
 import { cn } from "@/lib/utils";
 import type { UploadedMediaMeta } from "./MediaUploadField";
 import type { FieldProps } from "./shared";
@@ -83,8 +84,14 @@ export function MemoriesField({ field, value, onChange }: FieldProps<UploadedMed
     onChange(next);
   }
 
-  async function uploadFile(file: File, id: string) {
+  async function uploadFile(rawFile: File, id: string) {
     setError(null);
+    // Compress oversized photos before anything else — Vercel's serverless
+    // functions reject any request body over ~4.5MB at the platform level,
+    // independent of our own size limits, which is exactly what turned a
+    // real phone photo into a silent "Failed" here once deployed (it worked
+    // fine in local dev, where that platform limit doesn't exist).
+    const file = await compressImageIfOversized(rawFile);
     const check = validateFile(file);
     if (!check.valid) {
       setError(check.error ?? "That file couldn't be added.");

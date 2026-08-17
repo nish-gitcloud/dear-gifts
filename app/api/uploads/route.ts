@@ -37,7 +37,14 @@ export async function POST(request: NextRequest) {
       resourceType,
     });
     return NextResponse.json({ ...result, kind });
-  } catch {
+  } catch (err) {
+    // Swallowing this without logging meant every failed upload — wrong
+    // Cloudinary credentials, a request-size rejection, anything — looked
+    // identical from the outside: a generic "Upload failed" with nothing in
+    // Vercel's Logs to diagnose it from. Logging the real error server-side
+    // costs nothing and is the difference between guessing and knowing next
+    // time something like this happens.
+    console.error("Cloudinary upload failed:", err);
     return NextResponse.json({ error: "Upload failed. Please try again." }, { status: 500 });
   }
 }
