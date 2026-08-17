@@ -1,0 +1,78 @@
+@import "tailwindcss";
+
+:root {
+  /* Neutral app-shell tokens (creator dashboard, marketing pages) */
+  --background: #fffaf7;
+  --foreground: #241a17;
+
+  /* Default (unthemed) values for the dynamic theme tokens — overridden
+     per-instance by components/ThemeScope.tsx via inline style. */
+  --dg-background: #fffaf7;
+  --dg-surface: #ffffff;
+  --dg-primary: #e85c7b;
+  --dg-secondary: #f7b267;
+  --dg-text: #241a17;
+  --dg-accent: #e85c7b;
+}
+
+/* Marketing site follows the OS's light/dark preference automatically (no
+   manual toggle) — this only affects the base page shell; per-element dark:
+   utility classes on the marketing components carry the rest. */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #100b10;
+    --foreground: #f3ece8;
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-body), system-ui, sans-serif;
+}
+
+/* Plain utility classes (not routed through Tailwind's @theme token layer)
+   so the next/font-injected variables on <html> resolve directly without
+   any risk of a self-referential custom property. */
+.font-display {
+  font-family: var(--font-display), serif;
+}
+.font-hand {
+  font-family: var(--font-hand), cursive;
+}
+
+/* Respect reduced-motion globally as a baseline safety net; individual
+   components also check useReducedMotion() before animating. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* Minimum touch target helper (spec section 53) */
+.touch-target {
+  min-width: 44px;
+  min-height: 44px;
+}
+
+/* Glassmorphism card style, used sparingly by "glass" cardStyle themes */
+.card-glass {
+  background: color-mix(in srgb, var(--dg-surface) 55%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid color-mix(in srgb, var(--dg-text) 12%, transparent);
+}
+
+.card-paper {
+  background: var(--dg-surface);
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--dg-text) 8%, transparent) inset,
+    0 8px 24px color-mix(in srgb, var(--dg-text) 10%, transparent);
+}
