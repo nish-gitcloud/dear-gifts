@@ -1,39 +1,50 @@
 import { NextRequest, NextResponse } from "next/server";
-import { verifyRazorpaySignature } from "@/services/razorpay";
+import { getCashfreeOrderStatus } from "@/services/cashfree";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { activateMockGift, getMockGiftById, recordMockPayment } from "@/lib/mockStore";
 import { env } from "@/lib/env";
 
 /**
- * Verifies the Razorpay payment signature server-side and ONLY THEN
- * activates the gift (spec section 8: "Never activate the final gift based
- * only on frontend payment success"). This is the single choke point every
- * gift must pass through before it becomes reachable at /gift/[token].
+ * Confirms payment server-side and ONLY THEN activates the gift (spec
+ * section 8: "Never activate the final gift based only on frontend payment
+ * success"). This is the single choke point every gift must pass through
+ * before it becomes reachable at /gift/[token].
  *
- * Every attempt — success or failure — is recorded against the gift's own
- * `amount` (set at creation time, spec section 9) so the admin dashboard's
- * Orders table and failed-payment count (spec section 10) reflect real
- * charges rather than a hardcoded placeholder.
+ * Unlike the earlier Razorpay integration (which trusted a client-supplied
+ * HMAC signature), this asks Cashfree directly — using our own secret
+ * credentials — "what's the real status of this order?" via
+ * getCashfreeOrderStatus(). The browser's own report of what happened in
+ * the checkout widget is never taken as truth, only used to know when to
+ * call this endpoint.
+ *
+ * The `payments` table's columns are still named razorpay_order_id /
+ * razorpay_payment_id / razorpay_signature (from before this gateway swap)
+ * — renaming them would mean an extra ALTER TABLE migration against the
+ * already-live Supabase database for zero functional benefit, so this
+ * route just keeps writing Cashfree's data into those same columns
+ * (order id, and the raw order_status Cashfree returned).
  */
 export async function POST(request: NextRequest) {
-  const { giftId, orderId, paymentId, signature } = (await request.json()) as {
-    giftId: string;
-    orderId: string;
-    paymentId: string;
-    signature: string;
-  };
+  const { giftId, orderId } = (await request.json()) as { giftId: string; orderId: string };
 
-  const validSignature = verifyRazorpaySignature({ orderId, paymentId, signature });
+  let orderStatus: string;
+  try {
+    orderStatus = await getCashfreeOrderStatus(orderId);
+  } catch (err) {
+    console.error("Cashfree order status check failed during verify:", err);
+    return NextResponse.json({ error: "Could not confirm your payment. Please try again." }, { status: 502 });
+  }
+  const isPaid = orderStatus === "PAID";
 
   const admin = getSupabaseAdmin();
   if (admin) {
     const { data: giftRow } = await admin.from("gifts").select("amount").eq("id", giftId).maybeSingle();
     const amount = giftRow?.amount ?? 0;
 
-    if (!validSignature) {
+    if (!isPaid) {
       await admin
         .from("payments")
-        .insert({ gift_id: giftId, razorpay_order_id: orderId, razorpay_payment_id: paymentId, razorpay_signature: signature, amount, status: "failed" });
+        .insert({ gift_id: giftId, razorpay_order_id: orderId, razorpay_signature: orderStatus, amount, status: "failed" });
       return NextResponse.json({ error: "Payment verification failed." }, { status: 400 });
     }
 
@@ -43,8 +54,7 @@ export async function POST(request: NextRequest) {
       .insert({
         gift_id: giftId,
         razorpay_order_id: orderId,
-        razorpay_payment_id: paymentId,
-        razorpay_signature: signature,
+        razorpay_signature: orderStatus,
         amount,
         status: "captured",
       })
@@ -73,15 +83,15 @@ export async function POST(request: NextRequest) {
   const existing = getMockGiftById(giftId);
   const amount = existing?.amount ?? 0;
 
-  if (!validSignature) {
-    recordMockPayment({ giftId, orderId, paymentId, amount, status: "failed" });
+  if (!isPaid) {
+    recordMockPayment({ giftId, orderId, paymentId: orderStatus, amount, status: "failed" });
     return NextResponse.json({ error: "Payment verification failed." }, { status: 400 });
   }
 
   if (!existing) {
     return NextResponse.json({ error: "Gift not found." }, { status: 404 });
   }
-  recordMockPayment({ giftId, orderId, paymentId, amount, status: "captured" });
+  recordMockPayment({ giftId, orderId, paymentId: orderStatus, amount, status: "captured" });
   const activated = activateMockGift(giftId, env.app.giftExpiryDays);
   return NextResponse.json({ giftToken: activated!.giftToken });
 }

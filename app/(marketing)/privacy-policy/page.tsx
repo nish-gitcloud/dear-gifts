@@ -28,7 +28,7 @@ export default function PrivacyPolicyPage() {
           <p className="mt-2">
             We never ask the recipient of a gift for an account or personal details beyond the secret code needed to
             open it. Payment card details are never seen or stored by us — they go directly to our payment
-            processor, Razorpay.
+            processor, Cashfree.
           </p>
         </section>
         <section>
@@ -43,7 +43,7 @@ export default function PrivacyPolicyPage() {
         <section>
           <h2 className="font-display text-xl font-semibold text-[#241A17]">4. Third parties we rely on</h2>
           <p className="mt-2">
-            We use Supabase for our database and authentication, Razorpay for payment processing, and Cloudinary for
+            We use Supabase for our database and authentication, Cashfree for payment processing, and Cloudinary for
             photo/video/audio storage. Each of these providers processes data solely to provide their respective
             service to us, under their own security and privacy commitments.
           </p>

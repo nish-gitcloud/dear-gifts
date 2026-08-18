@@ -343,7 +343,7 @@ export interface DuplicateGiftResult {
  * activate it. The theme, wrap, occasion and paid interactive elements
  * carry over so the creator only has to review, not re-build, everything.
  * `amount` is recomputed from the cloned content (never trusted from the
- * client) so /duplicate/[giftId]'s checkout can create a Razorpay order
+ * client) so /duplicate/[giftId]'s checkout can create a payment order
  * without re-running the whole wizard.
  */
 export async function duplicateGiftByManageToken(token: string): Promise<DuplicateGiftResult | null> {

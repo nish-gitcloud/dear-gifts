@@ -1,26 +1,41 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createRazorpayOrder } from "@/services/razorpay";
-import { env } from "@/lib/env";
+import { createCashfreeOrder } from "@/services/cashfree";
 
+/**
+ * Creates a Cashfree order for the given gift and hands back the
+ * `payment_session_id` the frontend's Cashfree JS SDK needs to open the
+ * checkout widget (see app/create/[occasion]/summary/page.tsx). `mode` tells
+ * the same frontend whether to initialize the SDK against Cashfree's
+ * sandbox or production environment — safe to expose, it's not a secret.
+ */
 export async function POST(request: NextRequest) {
-  const { amount } = (await request.json()) as { amount: number };
+  const { amount, giftId, customerPhone, customerName } = (await request.json()) as {
+    amount: number;
+    giftId: string;
+    customerPhone: string;
+    customerName?: string;
+  };
   if (!amount || amount <= 0) {
     return NextResponse.json({ error: "Invalid amount." }, { status: 422 });
   }
+  if (!giftId) {
+    return NextResponse.json({ error: "Missing gift reference." }, { status: 422 });
+  }
   try {
-    const order = await createRazorpayOrder(amount);
-    // key_id is safe to expose to the browser (Razorpay's own Checkout.js
-    // widget requires it client-side) — only key_secret must stay
-    // server-only, and that never leaves services/razorpay.ts.
-    return NextResponse.json({ order, keyId: env.razorpay.isConfigured ? env.razorpay.keyId : undefined });
+    const order = await createCashfreeOrder({
+      giftId,
+      amountRupees: amount,
+      customerPhone: customerPhone ?? "",
+      customerName,
+    });
+    return NextResponse.json({ order });
   } catch (err) {
-    // An uncaught throw here previously produced a bare 500 with NO body at
-    // all, which made the client's `await res.json()` blow up with
-    // "Unexpected end of JSON input" — a useless message that hid the real
-    // cause. Logging server-side + always returning JSON means the actual
-    // Razorpay failure (e.g. live keys not yet activated / KYC pending) is
-    // now visible in Vercel's Logs tab instead of guessed at.
-    console.error("Razorpay create-order failed:", err);
+    // An uncaught throw here would produce a bare 500 with no body at all,
+    // which makes the client's `await res.json()` fail with a useless
+    // "Unexpected end of JSON input" instead of the real reason. Logging
+    // server-side + always returning JSON keeps the actual Cashfree failure
+    // visible in Vercel's Logs tab.
+    console.error("Cashfree create-order failed:", err);
     return NextResponse.json({ error: "Could not start payment. Please try again in a moment." }, { status: 500 });
   }
 }

@@ -29,6 +29,17 @@ export const env = {
       return Boolean(this.keyId && this.keySecret);
     },
   },
+  cashfree: {
+    appId: read("CASHFREE_APP_ID"),
+    secretKey: read("CASHFREE_SECRET_KEY"),
+    // "sandbox" (Cashfree's test environment — no real money moves) or
+    // "production" (real charges). Defaults to sandbox so an app/secret
+    // pasted in without also setting this can't accidentally go live.
+    mode: (read("CASHFREE_MODE") ?? "sandbox") as "sandbox" | "production",
+    get isConfigured() {
+      return Boolean(this.appId && this.secretKey);
+    },
+  },
   cloudinary: {
     cloudName: read("NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME"),
     apiKey: read("CLOUDINARY_API_KEY"),

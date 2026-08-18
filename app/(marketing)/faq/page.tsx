@@ -28,7 +28,7 @@ const FAQS = [
   },
   {
     q: "Is my payment secure?",
-    a: "Yes. Payments are processed through Razorpay, and a gift is only ever activated after your payment is verified server-side — never based on what the checkout screen alone reports.",
+    a: "Yes. Payments are processed through Cashfree, and a gift is only ever activated after your payment is verified server-side — never based on what the checkout screen alone reports.",
   },
   {
     q: "What happens to the photos and videos I upload?",
