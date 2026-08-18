@@ -1,6 +1,36 @@
 import type { OccasionId } from "@/types/gift";
 
 /**
+ * Default "Memories" photos shown until the creator uploads their own —
+ * every occasion's `memories.media` used to default to an empty array,
+ * which meant the Live Preview (and Preview Mode) showed nothing but
+ * "Photo unavailable" placeholders for this whole section until real photos
+ * were added. These two bundled illustrations give every occasion an actual
+ * populated-looking memories section by default, the same way every other
+ * section already has a sensible non-empty default.
+ */
+const DEFAULT_MEMORY_MEDIA = [
+  {
+    id: "demo-memory-1",
+    name: "default-memory-1.png",
+    size: 0,
+    kind: "image" as const,
+    previewUrl: "/images/memories/default-memory-1.png",
+    status: "done" as const,
+    caption: "Stargazing together",
+  },
+  {
+    id: "demo-memory-2",
+    name: "default-memory-2.png",
+    size: 0,
+    kind: "image" as const,
+    previewUrl: "/images/memories/default-memory-2.png",
+    status: "done" as const,
+    caption: "Our little food adventure",
+  },
+];
+
+/**
  * Beautiful default demo content used by Preview Mode whenever the creator
  * hasn't filled a field in yet (spec section 30). Keyed by section id so it
  * merges naturally with whatever the creator HAS entered — real data always
@@ -15,7 +45,7 @@ export const DEMO_DATA: Record<OccasionId, Record<string, Record<string, unknown
     cake: { cakeId: "cake-red-velvet" },
     welcome: { introTitle: "Something special awaits you...", introSubtitle: "I made a little world just for you." },
     mood: { musicSource: "dooron-dooron" },
-    memories: { layout: "polaroid", media: [] },
+    memories: { layout: "polaroid", media: DEFAULT_MEMORY_MEDIA },
     game: { gameId: "sliding-puzzle" },
     wishes: { wishes: ["May this year bring you endless laughter.", "Never stop chasing what makes you glow."] },
     scratch: { scratchTitle: "One more thing...", scratchMessage: "You make every day brighter just by being you." },
@@ -34,7 +64,7 @@ export const DEMO_DATA: Record<OccasionId, Record<string, Record<string, unknown
     welcome: { introTitle: "To us...", introSubtitle: "Every year, a little more in love." },
     story: { milestones: [{ label: "We met", date: "2018-03-14", note: "The day everything changed." }] },
     "then-vs-now": { thenLabel: "Then", nowLabel: "Now" },
-    memories: { layout: "cinema", media: [] },
+    memories: { layout: "cinema", media: DEFAULT_MEMORY_MEDIA },
     wishes: { wishes: ["Here's to forever."] },
     game: { gameId: "memory-match" },
     promise: { promiseText: "I promise to keep choosing you, every single day." },
@@ -49,7 +79,7 @@ export const DEMO_DATA: Record<OccasionId, Record<string, Record<string, unknown
     welcome: { introTitle: "There's something I need to ask you...", introSubtitle: "" },
     story: { milestones: [] },
     "then-vs-now": {},
-    memories: { layout: "cinema", media: [] },
+    memories: { layout: "cinema", media: DEFAULT_MEMORY_MEDIA },
     "jar-of-reasons": { reasons: ["Your laugh", "How you make everything feel like home"] },
     game: { gameId: "sliding-puzzle" },
     letter: { greeting: "My love,", body: "From the moment I met you, I knew.", signOff: "Forever," },
@@ -62,7 +92,7 @@ export const DEMO_DATA: Record<OccasionId, Record<string, Record<string, unknown
     "apology-gift": { giftType: "flower-bouquet" },
     "sorry-letter": { sorryMessage: "I'm sorry for what I said. You deserve better from me." },
     mood: { musicSource: "dooron-dooron" },
-    memories: { layout: "polaroid", media: [] },
+    memories: { layout: "polaroid", media: DEFAULT_MEMORY_MEDIA },
     game: { gameId: "memory-match" },
     pledge: { pledgeText: "I promise to listen more and react less." },
     letter: { greeting: "I'm sorry,", body: "I hope we can make something beautiful again.", signOff: "With love," },
@@ -73,7 +103,7 @@ export const DEMO_DATA: Record<OccasionId, Record<string, Record<string, unknown
     theme: { themeId: "sparkle-hearts" },
     celebration: { elements: ["cake", "fireworks"] },
     mood: {},
-    memories: { layout: "scrapbook", media: [] },
+    memories: { layout: "scrapbook", media: DEFAULT_MEMORY_MEDIA },
     game: { gameId: "sliding-puzzle" },
     wishes: { wishes: ["Wishing you all the best!"] },
     scratch: { scratchTitle: "Surprise!", scratchMessage: "Hope this made you smile." },
@@ -85,7 +115,7 @@ export const DEMO_DATA: Record<OccasionId, Record<string, Record<string, unknown
     theme: { themeId: "party" },
     "gift-wrap": { wrapId: "box-rainbow-pop" },
     welcome: { introTitle: "You did it!", introSubtitle: "So proud of you." },
-    memories: { layout: "polaroid", media: [] },
+    memories: { layout: "polaroid", media: DEFAULT_MEMORY_MEDIA },
     wishes: { wishes: ["Congratulations on this huge win!"] },
     game: { gameId: "sliding-puzzle" },
     letter: { greeting: "Congratulations!", body: "All your hard work paid off.", signOff: "Proud of you," },
@@ -96,7 +126,7 @@ export const DEMO_DATA: Record<OccasionId, Record<string, Record<string, unknown
     theme: { themeId: "classic-gold" },
     "gift-wrap": { wrapId: "chest-classic-oak" },
     welcome: { introTitle: "Celebrating you this season.", introSubtitle: "" },
-    memories: { layout: "scrapbook", media: [] },
+    memories: { layout: "scrapbook", media: DEFAULT_MEMORY_MEDIA },
     wishes: { wishes: ["Wishing you light and joy."] },
     letter: { greeting: "Dear friend,", body: "Wishing you a season full of joy.", signOff: "With warmth," },
   },
@@ -107,7 +137,7 @@ export const DEMO_DATA: Record<OccasionId, Record<string, Record<string, unknown
     "gift-wrap": { wrapId: "envelope-rose-gold" },
     welcome: { introTitle: "For my family.", introSubtitle: "" },
     story: { milestones: [] },
-    memories: { layout: "scrapbook", media: [] },
+    memories: { layout: "scrapbook", media: DEFAULT_MEMORY_MEDIA },
     wishes: { wishes: ["Grateful for every one of you."] },
     letter: { greeting: "Dear family,", body: "Everything I am, I owe to you.", signOff: "With all my love," },
   },
