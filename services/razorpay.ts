@@ -32,7 +32,16 @@ export async function createRazorpayOrder(amountRupees: number): Promise<Razorpa
     },
     body: JSON.stringify({ amount: amountPaise, currency: "INR" }),
   });
-  if (!res.ok) throw new Error("Failed to create Razorpay order.");
+  if (!res.ok) {
+    // Razorpay's actual rejection reason (e.g. "account not activated",
+    // "authentication failed") lives in this response body — the old code
+    // discarded it and threw a generic message, which meant Vercel's Logs
+    // could tell us THAT it failed but never WHY. Surfacing the real body
+    // here is the difference between guessing and knowing the fix.
+    const bodyText = await res.text().catch(() => "");
+    console.error("Razorpay order creation failed:", res.status, bodyText);
+    throw new Error(`Failed to create Razorpay order (HTTP ${res.status}): ${bodyText}`);
+  }
   return res.json();
 }
 
