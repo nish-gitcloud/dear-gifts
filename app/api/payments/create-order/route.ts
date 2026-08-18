@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createRazorpayOrder } from "@/services/razorpay";
+import { env } from "@/lib/env";
 
 export async function POST(request: NextRequest) {
   const { amount } = (await request.json()) as { amount: number };
@@ -8,7 +9,10 @@ export async function POST(request: NextRequest) {
   }
   try {
     const order = await createRazorpayOrder(amount);
-    return NextResponse.json({ order });
+    // key_id is safe to expose to the browser (Razorpay's own Checkout.js
+    // widget requires it client-side) — only key_secret must stay
+    // server-only, and that never leaves services/razorpay.ts.
+    return NextResponse.json({ order, keyId: env.razorpay.isConfigured ? env.razorpay.keyId : undefined });
   } catch (err) {
     // An uncaught throw here previously produced a bare 500 with NO body at
     // all, which made the client's `await res.json()` blow up with

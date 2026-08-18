@@ -19,6 +19,49 @@ function mockPaymentId(): string {
   return `pay_mock_${Date.now()}`;
 }
 
+// Minimal shape of the global Razorpay Checkout.js constructor — the real
+// script (loaded on demand below) attaches this to `window`. Typed loosely
+// on purpose: we only ever touch the handful of fields this page uses.
+interface RazorpayCheckoutInstance {
+  open: () => void;
+  on: (event: string, handler: (response: { error?: { description?: string } }) => void) => void;
+}
+interface RazorpayCheckoutOptions {
+  key: string;
+  amount: number;
+  currency: string;
+  order_id: string;
+  name: string;
+  description?: string;
+  theme?: { color?: string };
+  handler: (response: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => void;
+  modal?: { ondismiss?: () => void };
+}
+declare global {
+  interface Window {
+    Razorpay?: new (options: RazorpayCheckoutOptions) => RazorpayCheckoutInstance;
+  }
+}
+
+// Loads Razorpay's Checkout.js exactly once and resolves once
+// `window.Razorpay` is actually available — every other real Razorpay
+// integration (web or mobile-web) goes through this same hosted script,
+// there is no npm package that replaces it for client-side checkout.
+let razorpayScriptPromise: Promise<void> | null = null;
+function loadRazorpayCheckout(): Promise<void> {
+  if (typeof window !== "undefined" && window.Razorpay) return Promise.resolve();
+  if (!razorpayScriptPromise) {
+    razorpayScriptPromise = new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error("Couldn't load the payment window. Check your connection and try again."));
+      document.body.appendChild(script);
+    });
+  }
+  return razorpayScriptPromise;
+}
+
 /**
  * Order summary + "Pay & Create" (spec sections 8 & 31). In this Phase 1
  * scaffold (no live Razorpay keys), payment is simulated end-to-end through
@@ -54,6 +97,28 @@ export default function SummaryPage({ params }: { params: Promise<{ occasion: st
     "Private shareable link — yours to send whenever you're ready",
   ];
 
+  // Shared by both the real Razorpay flow and the mock (no-keys-configured)
+  // flow below — hits the one server-side choke point that actually
+  // activates a gift, then navigates to the success page.
+  async function verifyAndFinish(payload: { giftId: string; orderId: string; paymentId: string; signature: string; manageToken?: string }) {
+    const verifyRes = await fetch("/api/payments/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        giftId: payload.giftId,
+        orderId: payload.orderId,
+        paymentId: payload.paymentId,
+        signature: payload.signature,
+      }),
+    });
+    const verifyData = await verifyRes.json();
+    if (!verifyRes.ok) throw new Error(verifyData.error ?? "Payment wasn't completed. Your gift has not been published.");
+
+    store.reset();
+    const manageParam = payload.manageToken ? `&manage=${payload.manageToken}` : "";
+    router.push(`/create/${occasion!.id}/success?token=${verifyData.giftToken}${manageParam}`);
+  }
+
   async function payAndCreate() {
     trackEvent("checkout_started", { occasion: occasion!.id });
     setLoading(true);
@@ -75,31 +140,61 @@ export default function SummaryPage({ params }: { params: Promise<{ occasion: st
       const orderData = await orderRes.json();
       if (!orderRes.ok) throw new Error(orderData.error ?? "Could not start payment.");
 
+      const isMockOrder = String(orderData.order.id).startsWith("order_mock_");
+
+      if (!isMockOrder && orderData.keyId) {
+        // --- Real Razorpay Checkout ---------------------------------------
+        // Live keys are configured, so this is a genuine charge: open
+        // Razorpay's own payment window and only ever proceed from its
+        // `handler` callback, using the real payment id + signature it
+        // returns — never anything constructed on the client.
+        await loadRazorpayCheckout();
+        setLoading(false);
+        const rzp = new window.Razorpay!({
+          key: orderData.keyId,
+          amount: orderData.order.amount,
+          currency: orderData.order.currency,
+          order_id: orderData.order.id,
+          name: "Dear Gifts",
+          description: `${occasion!.title} gift for ${recipientName}`,
+          theme: { color: "#E85C7B" },
+          handler: (response) => {
+            setLoading(true);
+            verifyAndFinish({
+              giftId: giftData.giftId,
+              orderId: response.razorpay_order_id,
+              paymentId: response.razorpay_payment_id,
+              signature: response.razorpay_signature,
+              manageToken: giftData.manageToken,
+            })
+              .catch((e) => setError(e instanceof Error ? e.message : "Something went wrong."))
+              .finally(() => setLoading(false));
+          },
+          modal: {
+            ondismiss: () => {
+              setError("Payment was cancelled.");
+            },
+          },
+        });
+        rzp.on("payment.failed", (response) => {
+          setError(response.error?.description ?? "Payment failed. Please try again.");
+        });
+        rzp.open();
+        return;
+      }
+
       // --- Mock checkout (no live Razorpay keys configured) ---------------
-      // A real integration opens Razorpay's Checkout.js here and receives
-      // razorpay_payment_id/signature in its handler callback instead.
       const paymentId = mockPaymentId();
       const mockSignature = `mock_sig_${orderData.order.id}_${paymentId}`;
-
-      const verifyRes = await fetch("/api/payments/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          giftId: giftData.giftId,
-          orderId: orderData.order.id,
-          paymentId: paymentId,
-          signature: mockSignature,
-        }),
+      await verifyAndFinish({
+        giftId: giftData.giftId,
+        orderId: orderData.order.id,
+        paymentId,
+        signature: mockSignature,
+        manageToken: giftData.manageToken,
       });
-      const verifyData = await verifyRes.json();
-      if (!verifyRes.ok) throw new Error(verifyData.error ?? "Payment wasn't completed. Your gift has not been published.");
-
-      store.reset();
-      const manageParam = giftData.manageToken ? `&manage=${giftData.manageToken}` : "";
-      router.push(`/create/${occasion!.id}/success?token=${verifyData.giftToken}${manageParam}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong.");
-    } finally {
       setLoading(false);
     }
   }
