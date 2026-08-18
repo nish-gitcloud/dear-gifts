@@ -199,7 +199,13 @@ export function memoriesSection(opts?: { minItems?: number }): GiftSectionConfig
         type: "memory-list",
         label: "Photos, Videos & Voice Notes",
         helpText: "Add a caption and an image URL or upload for each memory. Photos up to 10MB, audio/voice up to 20MB, videos up to 50MB. Max 12 files.",
-        minItems: opts?.minItems ?? 3,
+        // Was 3 — forcing 3 *uploaded/valid* memories before Continue would
+        // even unlock blocked a creator who only wants one or two, and now
+        // that every occasion ships 2 default demo photos (lib/demoData.ts)
+        // rather than none, requiring 3 would make that default itself
+        // insufficient to pass. 1 keeps the section meaningful without
+        // being a hard wall.
+        minItems: opts?.minItems ?? 1,
         maxItems: 12,
         required: true,
       },
