@@ -12,10 +12,12 @@ const SAMPLE_STEP = 6; // sample every Nth pixel for perf
 export function ScratchStage({
   title,
   message,
+  imageUrl,
   onContinue,
 }: {
   title?: string;
   message?: string;
+  imageUrl?: string;
   onContinue: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -88,6 +90,14 @@ export function ScratchStage({
             here previously made this unreadable on any dark theme (white
             text on a white card). */}
         <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-6 text-center text-[#241A17]">
+          {imageUrl && (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={imageUrl}
+              alt=""
+              className="mb-1 h-20 w-20 rounded-xl object-cover shadow-sm"
+            />
+          )}
           <p className="font-display text-lg font-semibold">{title || "You uncovered it!"}</p>
           <p className="text-sm text-black/70">{message}</p>
         </div>

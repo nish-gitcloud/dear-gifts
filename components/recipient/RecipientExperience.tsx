@@ -202,15 +202,18 @@ function renderStage(
     }
     case "wishes":
       return <WishesStage key={stageKey} wishes={(values["wishes"]?.wishes as string[]) ?? []} onContinue={next} />;
-    case "scratch":
+    case "scratch": {
+      const scratchMedia = values["scratch"]?.scratchImage as UploadedMediaMeta[] | undefined;
       return (
         <ScratchStage
           key={stageKey}
           title={str(values["scratch"]?.scratchTitle)}
           message={str(values["scratch"]?.scratchMessage)}
+          imageUrl={scratchMedia?.[0]?.previewUrl}
           onContinue={next}
         />
       );
+    }
     case "letter": {
       const letterData = values["letter"] ?? values["sorry-letter"] ?? {};
       return (

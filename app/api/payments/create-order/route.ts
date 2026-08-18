@@ -6,6 +6,17 @@ export async function POST(request: NextRequest) {
   if (!amount || amount <= 0) {
     return NextResponse.json({ error: "Invalid amount." }, { status: 422 });
   }
-  const order = await createRazorpayOrder(amount);
-  return NextResponse.json({ order });
+  try {
+    const order = await createRazorpayOrder(amount);
+    return NextResponse.json({ order });
+  } catch (err) {
+    // An uncaught throw here previously produced a bare 500 with NO body at
+    // all, which made the client's `await res.json()` blow up with
+    // "Unexpected end of JSON input" — a useless message that hid the real
+    // cause. Logging server-side + always returning JSON means the actual
+    // Razorpay failure (e.g. live keys not yet activated / KYC pending) is
+    // now visible in Vercel's Logs tab instead of guessed at.
+    console.error("Razorpay create-order failed:", err);
+    return NextResponse.json({ error: "Could not start payment. Please try again in a moment." }, { status: 500 });
+  }
 }

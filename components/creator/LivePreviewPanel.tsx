@@ -304,7 +304,8 @@ function renderPreview(section: GiftSectionConfig, values: SectionValues, recipi
       );
     }
 
-    case "scratch":
+    case "scratch": {
+      const scratchMedia = values["scratch"]?.scratchImage as UploadedMediaMeta[] | undefined;
       return (
         <ThemeScope themeId={themeId} className="h-full w-full">
           <CenterFill>
@@ -312,12 +313,14 @@ function renderPreview(section: GiftSectionConfig, values: SectionValues, recipi
               <ScratchStage
                 title={str(values["scratch"]?.scratchTitle, "You uncovered it!")}
                 message={str(values["scratch"]?.scratchMessage, "A little surprise, just for you. 💝")}
+                imageUrl={scratchMedia?.[0]?.previewUrl}
                 onContinue={noop}
               />
             </ScaledStage>
           </CenterFill>
         </ThemeScope>
       );
+    }
 
     case "letter":
     case "sorry-letter": {
