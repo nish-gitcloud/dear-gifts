@@ -198,8 +198,9 @@ export default function ManageGiftPage({ params }: { params: Promise<{ token: st
 
       {gift.status === "pending_payment" && (
         <p className="mt-6 rounded-xl bg-amber-50 px-4 py-3 text-sm text-amber-700">
-          Payment was never completed for this gift, so it hasn&apos;t gone live. If you closed the tab mid-payment,
-          create it again from the start.
+          Awaiting payment confirmation. If you&apos;ve already paid and sent us your reference code, your gift will
+          go live shortly — check back on this page and it&apos;ll show your link automatically. If you haven&apos;t
+          paid yet, go back to the payment step to finish that first.
         </p>
       )}
 

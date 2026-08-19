@@ -110,8 +110,10 @@ export default function PayManualPage() {
 
       {manageToken && (
         <p className="mt-6 text-center text-xs text-black/40">
-          Save this management link to check on your gift later:{" "}
-          <span className="break-all font-medium text-black/60">/manage/{manageToken}</span>
+          Save this link — once your gift is activated, your shareable link will appear here automatically:{" "}
+          <Link href={`/manage/${manageToken}`} className="break-all font-medium text-[#E85C7B] underline">
+            /manage/{manageToken}
+          </Link>
         </p>
       )}
     </main>
