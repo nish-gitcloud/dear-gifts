@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getCashfreeOrderStatus } from "@/services/cashfree";
+import { deriveCashfreeLinkId, getCashfreePaymentLinkStatus } from "@/services/cashfree";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
 import { activateMockGift, getMockGiftById, recordMockPayment } from "@/lib/mockStore";
 import { env } from "@/lib/env";
@@ -10,31 +10,36 @@ import { env } from "@/lib/env";
  * success"). This is the single choke point every gift must pass through
  * before it becomes reachable at /gift/[token].
  *
- * Unlike the earlier Razorpay integration (which trusted a client-supplied
- * HMAC signature), this asks Cashfree directly — using our own secret
- * credentials — "what's the real status of this order?" via
- * getCashfreeOrderStatus(). The browser's own report of what happened in
- * the checkout widget is never taken as truth, only used to know when to
- * call this endpoint.
+ * The Cashfree Payment Link id is derived from `giftId` alone
+ * (deriveCashfreeLinkId — the same function used when the link was
+ * created), never trusted from the request body. That means this endpoint
+ * only needs `giftId` and always checks the *correct* link's real status
+ * with Cashfree directly, using our own secret credentials — the browser's
+ * own report of what happened after redirecting back from checkout is
+ * never taken as truth, only used to know when to call this endpoint.
  *
  * The `payments` table's columns are still named razorpay_order_id /
- * razorpay_payment_id / razorpay_signature (from before this gateway swap)
- * — renaming them would mean an extra ALTER TABLE migration against the
- * already-live Supabase database for zero functional benefit, so this
- * route just keeps writing Cashfree's data into those same columns
- * (order id, and the raw order_status Cashfree returned).
+ * razorpay_payment_id / razorpay_signature (from before this app switched
+ * payment gateways) — renaming them would mean an extra ALTER TABLE
+ * migration against the already-live Supabase database for zero functional
+ * benefit, so this route just keeps writing Cashfree's data into those same
+ * columns (the link id, and the raw link_status Cashfree returned).
  */
 export async function POST(request: NextRequest) {
-  const { giftId, orderId } = (await request.json()) as { giftId: string; orderId: string };
+  const { giftId } = (await request.json()) as { giftId: string };
+  if (!giftId) {
+    return NextResponse.json({ error: "Missing gift reference." }, { status: 422 });
+  }
+  const linkId = deriveCashfreeLinkId(giftId);
 
-  let orderStatus: string;
+  let linkStatus: string;
   try {
-    orderStatus = await getCashfreeOrderStatus(orderId);
+    linkStatus = await getCashfreePaymentLinkStatus(linkId);
   } catch (err) {
-    console.error("Cashfree order status check failed during verify:", err);
+    console.error("Cashfree payment link status check failed during verify:", err);
     return NextResponse.json({ error: "Could not confirm your payment. Please try again." }, { status: 502 });
   }
-  const isPaid = orderStatus === "PAID";
+  const isPaid = linkStatus === "PAID";
 
   const admin = getSupabaseAdmin();
   if (admin) {
@@ -44,7 +49,7 @@ export async function POST(request: NextRequest) {
     if (!isPaid) {
       await admin
         .from("payments")
-        .insert({ gift_id: giftId, razorpay_order_id: orderId, razorpay_signature: orderStatus, amount, status: "failed" });
+        .insert({ gift_id: giftId, razorpay_order_id: linkId, razorpay_signature: linkStatus, amount, status: "failed" });
       return NextResponse.json({ error: "Payment verification failed." }, { status: 400 });
     }
 
@@ -53,8 +58,8 @@ export async function POST(request: NextRequest) {
       .from("payments")
       .insert({
         gift_id: giftId,
-        razorpay_order_id: orderId,
-        razorpay_signature: orderStatus,
+        razorpay_order_id: linkId,
+        razorpay_signature: linkStatus,
         amount,
         status: "captured",
       })
@@ -84,14 +89,14 @@ export async function POST(request: NextRequest) {
   const amount = existing?.amount ?? 0;
 
   if (!isPaid) {
-    recordMockPayment({ giftId, orderId, paymentId: orderStatus, amount, status: "failed" });
+    recordMockPayment({ giftId, orderId: linkId, paymentId: linkStatus, amount, status: "failed" });
     return NextResponse.json({ error: "Payment verification failed." }, { status: 400 });
   }
 
   if (!existing) {
     return NextResponse.json({ error: "Gift not found." }, { status: 404 });
   }
-  recordMockPayment({ giftId, orderId, paymentId: orderStatus, amount, status: "captured" });
+  recordMockPayment({ giftId, orderId: linkId, paymentId: linkStatus, amount, status: "captured" });
   const activated = activateMockGift(giftId, env.app.giftExpiryDays);
   return NextResponse.json({ giftToken: activated!.giftToken });
 }

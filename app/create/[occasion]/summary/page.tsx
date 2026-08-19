@@ -12,47 +12,24 @@ import { trackEvent } from "@/lib/analyticsClient";
 import { Button } from "@/components/ui/Button";
 import { WrapIllustration, WRAP_COLORS, FALLBACK_WRAP_PALETTE } from "@/components/creator/fields/WrapPickerField";
 
-// Minimal shape of the global Cashfree JS SDK (v3) constructor — the real
-// script (loaded on demand below) attaches this to `window`. Typed loosely
-// on purpose: we only ever touch the handful of fields this page uses.
-interface CashfreeCheckoutResult {
-  paymentDetails?: unknown;
-  error?: { message?: string };
-}
-interface CashfreeCheckoutInstance {
-  checkout: (options: { paymentSessionId: string; redirectTarget?: string }) => Promise<CashfreeCheckoutResult>;
-}
-declare global {
-  interface Window {
-    Cashfree?: (options: { mode: "sandbox" | "production" }) => CashfreeCheckoutInstance;
-  }
-}
-
-// Loads Cashfree's JS SDK exactly once and resolves once `window.Cashfree`
-// is actually available — every real Cashfree web integration goes through
-// this same hosted script, there is no npm package that replaces it for
-// client-side checkout.
-let cashfreeScriptPromise: Promise<void> | null = null;
-function loadCashfreeCheckout(): Promise<void> {
-  if (typeof window !== "undefined" && window.Cashfree) return Promise.resolve();
-  if (!cashfreeScriptPromise) {
-    cashfreeScriptPromise = new Promise((resolve, reject) => {
-      const script = document.createElement("script");
-      script.src = "https://sdk.cashfree.com/js/v3/cashfree.js";
-      script.onload = () => resolve();
-      script.onerror = () => reject(new Error("Couldn't load the payment window. Check your connection and try again."));
-      document.body.appendChild(script);
-    });
-  }
-  return cashfreeScriptPromise;
-}
-
 /**
- * Order summary + "Pay & Create" (spec sections 8 & 31). In this Phase 1
- * scaffold (no live Cashfree keys), payment is simulated end-to-end through
- * the same create → order → verify pipeline a real integration would use —
- * swapping in the real Cashfree checkout later requires no changes to this
- * activation flow, only to services/cashfree.ts.
+ * Order summary + "Pay & Create" (spec sections 8 & 31). Payment goes
+ * through a Cashfree Payment Link — a full-page redirect to a checkout
+ * hosted entirely on Cashfree's own domain, rather than a JS widget opened
+ * from this page. That's a deliberate choice: this app's website was
+ * rejected for whitelisting by both Razorpay and Cashfree's own-domain
+ * checkout (their compliance flagged the registered business as a mismatch
+ * for this specific app), and Payment Links don't hit that same gate.
+ * Verification stays fully server-side and automatic — see
+ * app/create/[occasion]/payment-return/page.tsx, which the customer lands
+ * back on after paying, and /api/payments/verify, which independently
+ * confirms the link's real status with Cashfree before ever activating the
+ * gift (spec: never trust the browser's own report of what happened).
+ *
+ * In this Phase 1 scaffold (no live Cashfree keys), payment is simulated
+ * end-to-end through the same create → link → verify pipeline a real
+ * integration uses — swapping in real keys later requires no changes here,
+ * only to services/cashfree.ts.
  *
  * Styled as a single "ready to publish" moment (dark, hero-led, a short
  * feature list, one clear price) rather than a plain itemized receipt — the
@@ -82,23 +59,6 @@ export default function SummaryPage({ params }: { params: Promise<{ occasion: st
     "Private shareable link — yours to send whenever you're ready",
   ];
 
-  // Shared by both the real Cashfree flow and the mock (no-keys-configured)
-  // flow below — hits the one server-side choke point that actually
-  // activates a gift, then navigates to the success page.
-  async function verifyAndFinish(payload: { giftId: string; orderId: string; manageToken?: string }) {
-    const verifyRes = await fetch("/api/payments/verify", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ giftId: payload.giftId, orderId: payload.orderId }),
-    });
-    const verifyData = await verifyRes.json();
-    if (!verifyRes.ok) throw new Error(verifyData.error ?? "Payment wasn't completed. Your gift has not been published.");
-
-    store.reset();
-    const manageParam = payload.manageToken ? `&manage=${payload.manageToken}` : "";
-    router.push(`/create/${occasion!.id}/success?token=${verifyData.giftToken}${manageParam}`);
-  }
-
   async function payAndCreate() {
     trackEvent("checkout_started", { occasion: occasion!.id });
     setLoading(true);
@@ -123,47 +83,36 @@ export default function SummaryPage({ params }: { params: Promise<{ occasion: st
           giftId: giftData.giftId,
           customerPhone: creatorPhone,
           customerName: creatorName,
+          occasionId: occasion!.id,
+          manageToken: giftData.manageToken,
         }),
       });
       const orderData = await orderRes.json();
       if (!orderRes.ok) throw new Error(orderData.error ?? "Could not start payment.");
 
-      const isMockOrder = String(orderData.order.orderId).startsWith("order_mock_");
-
-      if (!isMockOrder) {
-        // --- Real Cashfree Checkout ----------------------------------------
-        // Live keys are configured, so this is a genuine charge: open
-        // Cashfree's own payment widget and, regardless of what it reports
-        // back to the browser, only ever activate the gift once
-        // verifyAndFinish confirms the order with Cashfree server-side.
-        await loadCashfreeCheckout();
-        setLoading(false);
-        const cashfree = window.Cashfree!({ mode: orderData.order.mode === "production" ? "production" : "sandbox" });
-        const result = await cashfree.checkout({
-          paymentSessionId: orderData.order.paymentSessionId,
-          redirectTarget: "_modal",
-        });
-
-        if (!result || result.error) {
-          setError("Payment was cancelled or didn't go through.");
-          return;
-        }
-
-        setLoading(true);
-        await verifyAndFinish({
-          giftId: giftData.giftId,
-          orderId: orderData.order.orderId,
-          manageToken: giftData.manageToken,
-        });
+      if (orderData.link.linkUrl) {
+        // --- Real Cashfree Payment Link --------------------------------
+        // A full-page redirect to Cashfree's own hosted checkout — the
+        // customer pays there, Cashfree sends them back to
+        // /create/[occasion]/payment-return, which is what actually
+        // verifies the payment server-side and activates the gift. Nothing
+        // more happens in *this* tab from here.
+        window.location.assign(orderData.link.linkUrl);
         return;
       }
 
       // --- Mock checkout (no live Cashfree keys configured) ----------------
-      await verifyAndFinish({
-        giftId: giftData.giftId,
-        orderId: orderData.order.orderId,
-        manageToken: giftData.manageToken,
+      const verifyRes = await fetch("/api/payments/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ giftId: giftData.giftId }),
       });
+      const verifyData = await verifyRes.json();
+      if (!verifyRes.ok) throw new Error(verifyData.error ?? "Payment wasn't completed. Your gift has not been published.");
+
+      store.reset();
+      const manageParam = giftData.manageToken ? `&manage=${giftData.manageToken}` : "";
+      router.push(`/create/${occasion!.id}/success?token=${verifyData.giftToken}${manageParam}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong.");
       setLoading(false);

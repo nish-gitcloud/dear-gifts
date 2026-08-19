@@ -4,17 +4,14 @@ import { use, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/Button";
 
-function mockPaymentId(): string {
-  return `pay_mock_${Date.now()}`;
-}
-
 /**
  * Checkout for a *duplicated* gift (spec section 6 — "Create New Gift"
  * reuses a previous gift's content but always requires a fresh payment).
  * Unlike /create/[occasion]/summary, the gift row already exists — created
  * by POST /api/manage/[token]/duplicate — so this only runs the
- * order-create → mock pay → verify leg of the pipeline, never a second
- * /api/gifts POST.
+ * link-create → pay → verify leg of the pipeline, never a second
+ * /api/gifts POST. Same Cashfree Payment Link redirect as the main summary
+ * page — see services/cashfree.ts and app/create/[occasion]/payment-return.
  */
 function DuplicateCheckout({ giftId }: { giftId: string }) {
   const searchParams = useSearchParams();
@@ -33,18 +30,24 @@ function DuplicateCheckout({ giftId }: { giftId: string }) {
       const orderRes = await fetch("/api/payments/create-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount }),
+        body: JSON.stringify({ amount, giftId, occasionId: occasion, manageToken }),
       });
       const orderData = await orderRes.json();
       if (!orderRes.ok) throw new Error(orderData.error ?? "Could not start payment.");
 
-      const paymentId = mockPaymentId();
-      const mockSignature = `mock_sig_${orderData.order.id}_${paymentId}`;
+      if (orderData.link.linkUrl) {
+        // Real Cashfree Payment Link — full-page redirect, same as
+        // /create/[occasion]/summary. The customer lands back on
+        // /create/[occasion]/payment-return, which verifies and activates.
+        window.location.assign(orderData.link.linkUrl);
+        return;
+      }
 
+      // Mock checkout (no live Cashfree keys configured)
       const verifyRes = await fetch("/api/payments/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ giftId, orderId: orderData.order.id, paymentId, signature: mockSignature }),
+        body: JSON.stringify({ giftId }),
       });
       const verifyData = await verifyRes.json();
       if (!verifyRes.ok) throw new Error(verifyData.error ?? "Payment wasn't completed.");
