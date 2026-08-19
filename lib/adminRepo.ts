@@ -1,7 +1,16 @@
 import "server-only";
 import { getSupabaseAdmin } from "@/lib/supabase/server";
-import { listAllMockGifts, listMockPayments, type MockGift, type MockPayment } from "@/lib/mockStore";
+import {
+  activateMockGift,
+  getMockGiftById,
+  listAllMockGifts,
+  listMockPayments,
+  recordMockPayment,
+  type MockGift,
+  type MockPayment,
+} from "@/lib/mockStore";
 import { getOccasion } from "@/config/occasions";
+import { env } from "@/lib/env";
 
 export interface OverviewStats {
   totalGifts: number;
@@ -185,6 +194,59 @@ export async function listAllGiftsForAdmin(limit = 200): Promise<AdminGiftRow[]>
       expiresAt: g.expiresAt,
       views: g.views,
     }));
+}
+
+/**
+ * Manually activates a gift stuck in `pending_payment` — the admin-side
+ * counterpart to /api/payments/verify, used only while payment collection
+ * is going through the temporary manual-link flow (see
+ * app/create/[occasion]/pay-manual's top comment). The admin has already
+ * confirmed the customer's reference code matches a real payment received
+ * on the static Cashfree Payment Link/Page before calling this — there's
+ * no independent gateway check here the way the automatic flow has,
+ * because there's no per-gift order/link id to check against.
+ */
+export async function activateGiftManually(giftId: string): Promise<{ giftToken: string } | null> {
+  const admin = getSupabaseAdmin();
+  if (admin) {
+    const { data: giftRow } = await admin.from("gifts").select("amount").eq("id", giftId).maybeSingle();
+    if (!giftRow) return null;
+
+    const expiresAt = new Date(Date.now() + env.app.giftExpiryDays * 86_400_000).toISOString();
+    const { data: payment } = await admin
+      .from("payments")
+      .insert({
+        gift_id: giftId,
+        razorpay_order_id: "manual",
+        razorpay_signature: "manually-activated",
+        amount: giftRow.amount,
+        status: "captured",
+      })
+      .select()
+      .single();
+
+    const { data: gift, error } = await admin
+      .from("gifts")
+      .update({
+        status: "active",
+        payment_status: "paid",
+        payment_id: payment?.id ?? null,
+        completed_at: new Date().toISOString(),
+        expires_at: expiresAt,
+      })
+      .eq("id", giftId)
+      .select("gift_token")
+      .single();
+
+    if (error || !gift) return null;
+    return { giftToken: gift.gift_token };
+  }
+
+  const existing = getMockGiftById(giftId);
+  if (!existing) return null;
+  recordMockPayment({ giftId, orderId: "manual", paymentId: "manually-activated", amount: existing.amount, status: "captured" });
+  const activated = activateMockGift(giftId, env.app.giftExpiryDays);
+  return activated ? { giftToken: activated.giftToken } : null;
 }
 
 export interface AdminCustomerRow {

@@ -53,6 +53,24 @@ export const env = {
     url: read("NEXT_PUBLIC_APP_URL") ?? "http://localhost:3000",
     giftExpiryDays: Number(read("GIFT_EXPIRY_DAYS") ?? "30"),
   },
+  /**
+   * Temporary manual-payment path (see app/create/[occasion]/pay-manual) —
+   * used while Cashfree's Payment Link *creation API* is still pending
+   * approval on this account ("link_creation_api is not enabled"). A single
+   * static Cashfree Payment Page/Link (created once from the Dashboard,
+   * reusable by any customer) collects the flat ₹199, and the creator sends
+   * a short reference code to this WhatsApp number so the gift can be
+   * activated manually from /admin. Swap back to the automatic
+   * services/cashfree.ts flow once Cashfree enables that API — no other
+   * code needs to change, only this flag and the page that reads it.
+   */
+  manualPayment: {
+    linkUrl: read("NEXT_PUBLIC_PAYMENT_LINK_URL"),
+    whatsappNumber: read("NEXT_PUBLIC_WHATSAPP_NUMBER"),
+    get isConfigured() {
+      return Boolean(this.linkUrl);
+    },
+  },
   admin: {
     // Shared-secret gate for /admin (spec section 10). This is intentionally
     // separate from Supabase Auth — the admin dashboard should work even on

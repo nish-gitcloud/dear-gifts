@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { giftReferenceCode } from "@/lib/paymentRef";
 
 interface Gift {
   id: string;
@@ -27,22 +28,50 @@ const STATUS_CLASS: Record<string, string> = {
 
 export default function AdminGiftsPage() {
   const [gifts, setGifts] = useState<Gift[] | null>(null);
+  const [activatingId, setActivatingId] = useState<string | null>(null);
 
-  useEffect(() => {
+  function loadGifts() {
     fetch("/api/admin/gifts")
       .then((res) => res.json())
       .then((data) => setGifts(data.gifts ?? []));
+  }
+
+  useEffect(() => {
+    loadGifts();
   }, []);
+
+  async function activate(giftId: string) {
+    if (!confirm("Confirm the customer's reference code matches a real payment you've received — activate this gift?")) {
+      return;
+    }
+    setActivatingId(giftId);
+    try {
+      const res = await fetch(`/api/admin/gifts/${giftId}/activate`, { method: "POST" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        alert(data.error ?? "Couldn't activate this gift.");
+        return;
+      }
+      loadGifts();
+    } finally {
+      setActivatingId(null);
+    }
+  }
 
   return (
     <div>
       <h1 className="font-display text-2xl font-semibold text-[#241A17]">Gifts</h1>
+      <p className="mt-1 text-xs text-black/45">
+        &quot;Ref&quot; is the short code a customer sends after paying via the manual payment link — match it before
+        activating a pending gift.
+      </p>
       <div className="mt-6 overflow-x-auto rounded-2xl bg-white shadow-sm">
         <table className="w-full text-left text-sm">
           <thead className="border-b border-black/5 text-xs uppercase tracking-wide text-black/40">
             <tr>
               <th className="px-4 py-3">Recipient</th>
               <th className="px-4 py-3">Occasion</th>
+              <th className="px-4 py-3">Ref</th>
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Amount</th>
               <th className="px-4 py-3">Views</th>
@@ -53,7 +82,7 @@ export default function AdminGiftsPage() {
           <tbody>
             {gifts?.length === 0 && (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-black/40">
+                <td colSpan={8} className="px-4 py-8 text-center text-black/40">
                   No gifts yet.
                 </td>
               </tr>
@@ -62,6 +91,7 @@ export default function AdminGiftsPage() {
               <tr key={g.id} className="border-b border-black/5 last:border-0">
                 <td className="px-4 py-3 font-medium text-[#241A17]">{g.recipientName}</td>
                 <td className="px-4 py-3 text-black/60">{g.occasionTitle}</td>
+                <td className="px-4 py-3 font-mono text-xs text-black/50">{giftReferenceCode(g.id)}</td>
                 <td className="px-4 py-3">
                   <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${STATUS_CLASS[g.status] ?? STATUS_CLASS.draft}`}>
                     {g.status.replace("_", " ")}
@@ -76,12 +106,22 @@ export default function AdminGiftsPage() {
                       View
                     </Link>
                   )}
+                  {g.status === "pending_payment" && (
+                    <button
+                      type="button"
+                      onClick={() => activate(g.id)}
+                      disabled={activatingId === g.id}
+                      className="touch-target rounded-full bg-[#E85C7B] px-3 py-1.5 text-xs font-medium text-white disabled:opacity-50"
+                    >
+                      {activatingId === g.id ? "Activating…" : "Activate"}
+                    </button>
+                  )}
                 </td>
               </tr>
             ))}
             {gifts === null && (
               <tr>
-                <td colSpan={7} className="px-4 py-8 text-center text-black/40">
+                <td colSpan={8} className="px-4 py-8 text-center text-black/40">
                   Loading…
                 </td>
               </tr>

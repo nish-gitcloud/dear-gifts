@@ -8,10 +8,10 @@ import { Button } from "@/components/ui/Button";
  * Checkout for a *duplicated* gift (spec section 6 — "Create New Gift"
  * reuses a previous gift's content but always requires a fresh payment).
  * Unlike /create/[occasion]/summary, the gift row already exists — created
- * by POST /api/manage/[token]/duplicate — so this only runs the
- * link-create → pay → verify leg of the pipeline, never a second
- * /api/gifts POST. Same Cashfree Payment Link redirect as the main summary
- * page — see services/cashfree.ts and app/create/[occasion]/payment-return.
+ * by POST /api/manage/[token]/duplicate — so this only hands off to the
+ * same manual-payment step (see app/create/[occasion]/pay-manual and its
+ * top comment for why payment is manual right now rather than the
+ * automatic Cashfree Payment Link flow this app is built for).
  */
 function DuplicateCheckout({ giftId }: { giftId: string }) {
   const searchParams = useSearchParams();
@@ -21,44 +21,11 @@ function DuplicateCheckout({ giftId }: { giftId: string }) {
   const manageToken = searchParams.get("manage") ?? "";
   const occasion = searchParams.get("occasion") ?? "birthday";
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
-  async function payAndActivate() {
+  function payAndActivate() {
     setLoading(true);
-    setError(null);
-    try {
-      const orderRes = await fetch("/api/payments/create-order", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount, giftId, occasionId: occasion, manageToken }),
-      });
-      const orderData = await orderRes.json();
-      if (!orderRes.ok) throw new Error(orderData.error ?? "Could not start payment.");
-
-      if (orderData.link.linkUrl) {
-        // Real Cashfree Payment Link — full-page redirect, same as
-        // /create/[occasion]/summary. The customer lands back on
-        // /create/[occasion]/payment-return, which verifies and activates.
-        window.location.assign(orderData.link.linkUrl);
-        return;
-      }
-
-      // Mock checkout (no live Cashfree keys configured)
-      const verifyRes = await fetch("/api/payments/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ giftId }),
-      });
-      const verifyData = await verifyRes.json();
-      if (!verifyRes.ok) throw new Error(verifyData.error ?? "Payment wasn't completed.");
-
-      const manageParam = manageToken ? `&manage=${manageToken}` : "";
-      router.push(`/create/${occasion}/success?token=${verifyData.giftToken}${manageParam}`);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Something went wrong.");
-    } finally {
-      setLoading(false);
-    }
+    const manageParam = manageToken ? `&manage=${manageToken}` : "";
+    router.push(`/create/${occasion}/pay-manual?giftId=${giftId}${manageParam}`);
   }
 
   return (
@@ -76,8 +43,6 @@ function DuplicateCheckout({ giftId }: { giftId: string }) {
         <span className="font-semibold text-[#241A17]">Total</span>
         <span className="font-display text-xl font-semibold text-[#241A17]">₹{amount}</span>
       </div>
-
-      {error && <p className="mt-4 text-sm text-red-500">{error}</p>}
 
       {giftId && giftToken ? (
         <div className="mt-8">

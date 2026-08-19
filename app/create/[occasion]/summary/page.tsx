@@ -13,23 +13,24 @@ import { Button } from "@/components/ui/Button";
 import { WrapIllustration, WRAP_COLORS, FALLBACK_WRAP_PALETTE } from "@/components/creator/fields/WrapPickerField";
 
 /**
- * Order summary + "Pay & Create" (spec sections 8 & 31). Payment goes
- * through a Cashfree Payment Link — a full-page redirect to a checkout
- * hosted entirely on Cashfree's own domain, rather than a JS widget opened
- * from this page. That's a deliberate choice: this app's website was
- * rejected for whitelisting by both Razorpay and Cashfree's own-domain
- * checkout (their compliance flagged the registered business as a mismatch
- * for this specific app), and Payment Links don't hit that same gate.
- * Verification stays fully server-side and automatic — see
- * app/create/[occasion]/payment-return/page.tsx, which the customer lands
- * back on after paying, and /api/payments/verify, which independently
- * confirms the link's real status with Cashfree before ever activating the
- * gift (spec: never trust the browser's own report of what happened).
+ * Order summary + "Pay & Create" (spec sections 8 & 31).
  *
- * In this Phase 1 scaffold (no live Cashfree keys), payment is simulated
- * end-to-end through the same create → link → verify pipeline a real
- * integration uses — swapping in real keys later requires no changes here,
- * only to services/cashfree.ts.
+ * Payment currently routes through a *manual* step (see
+ * app/create/[occasion]/pay-manual) rather than the fully-automatic
+ * Cashfree Payment Link flow this app is built for: Cashfree's
+ * link-creation API isn't enabled on this account yet
+ * ("link_creation_api is not enabled or approved"), on top of both
+ * Razorpay and Cashfree's own-domain checkout having already rejected this
+ * app's website-whitelisting request (their compliance flagged the
+ * registered business as a mismatch for this specific app). A single
+ * reusable Payment Link/Page created once from the Cashfree Dashboard
+ * covers the flat price in the meantime, with a short reference code the
+ * creator sends after paying so /admin can activate the gift by hand.
+ *
+ * Once Cashfree enables link-creation-api, this only needs to change back
+ * to calling /api/payments/create-order + redirecting to the real per-gift
+ * link — services/cashfree.ts and the payment-return page are already
+ * built for that and untouched by this stopgap.
  *
  * Styled as a single "ready to publish" moment (dark, hero-led, a short
  * feature list, one clear price) rather than a plain itemized receipt — the
@@ -72,47 +73,14 @@ export default function SummaryPage({ params }: { params: Promise<{ occasion: st
       const giftData = await giftRes.json();
       if (!giftRes.ok) throw new Error(giftData.error ?? "Could not create your gift.");
 
-      const creatorPhone = String(store.values["from-you"]?.creatorPhone ?? "");
-      const creatorName = String(store.values["from-you"]?.creatorName ?? "");
-
-      const orderRes = await fetch("/api/payments/create-order", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          amount: giftData.amount,
-          giftId: giftData.giftId,
-          customerPhone: creatorPhone,
-          customerName: creatorName,
-          occasionId: occasion!.id,
-          manageToken: giftData.manageToken,
-        }),
-      });
-      const orderData = await orderRes.json();
-      if (!orderRes.ok) throw new Error(orderData.error ?? "Could not start payment.");
-
-      if (orderData.link.linkUrl) {
-        // --- Real Cashfree Payment Link --------------------------------
-        // A full-page redirect to Cashfree's own hosted checkout — the
-        // customer pays there, Cashfree sends them back to
-        // /create/[occasion]/payment-return, which is what actually
-        // verifies the payment server-side and activates the gift. Nothing
-        // more happens in *this* tab from here.
-        window.location.assign(orderData.link.linkUrl);
-        return;
-      }
-
-      // --- Mock checkout (no live Cashfree keys configured) ----------------
-      const verifyRes = await fetch("/api/payments/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ giftId: giftData.giftId }),
-      });
-      const verifyData = await verifyRes.json();
-      if (!verifyRes.ok) throw new Error(verifyData.error ?? "Payment wasn't completed. Your gift has not been published.");
-
-      store.reset();
+      // The gift is saved (pending_payment) — hand off to the manual
+      // payment step (see this file's top comment for why it's manual
+      // right now). store.reset() happens once /admin actually activates
+      // this gift and the creator returns via their management link, not
+      // here — the wizard draft should stay intact if they close this tab
+      // before finishing payment.
       const manageParam = giftData.manageToken ? `&manage=${giftData.manageToken}` : "";
-      router.push(`/create/${occasion!.id}/success?token=${verifyData.giftToken}${manageParam}`);
+      router.push(`/create/${occasion!.id}/pay-manual?giftId=${giftData.giftId}${manageParam}`);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Something went wrong.");
       setLoading(false);
