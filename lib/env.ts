@@ -71,6 +71,12 @@ export const env = {
       return Boolean(this.linkUrl);
     },
   },
+  metaPixel: {
+    id: read("NEXT_PUBLIC_META_PIXEL_ID"),
+    get isConfigured() {
+      return Boolean(this.id);
+    },
+  },
   admin: {
     // Shared-secret gate for /admin (spec section 10). This is intentionally
     // separate from Supabase Auth — the admin dashboard should work even on

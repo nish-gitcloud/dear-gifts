@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Plus_Jakarta_Sans, Playfair_Display, Caveat } from "next/font/google";
 import "./globals.css";
+import { MetaPixel } from "@/components/MetaPixel";
+import { env } from "@/lib/env";
 
 // Exactly three font families total (spec section 51): a modern sans for
 // body/UI text, an elegant display serif for headings/emotional moments,
@@ -27,7 +29,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       lang="en"
       className={`${bodyFont.variable} ${displayFont.variable} ${handFont.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <body className="min-h-full flex flex-col">
+        {env.metaPixel.isConfigured && <MetaPixel pixelId={env.metaPixel.id!} />}
+        {children}
+      </body>
     </html>
   );
 }

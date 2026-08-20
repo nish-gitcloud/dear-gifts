@@ -7,6 +7,7 @@ import QRCode from "qrcode";
 import { getOccasion } from "@/config/occasions";
 import { EDITABLE_FIELDS } from "@/lib/editPolicy";
 import { Button } from "@/components/ui/Button";
+import { trackMetaEvent } from "@/lib/metaPixel";
 
 interface ManageGift {
   id: string;
@@ -78,6 +79,24 @@ export default function ManageGiftPage({ params }: { params: Promise<{ token: st
     // eslint-disable-next-line react-hooks/set-state-in-effect -- depends on window, unavailable during SSR/initial render.
     setGiftUrl(url);
     QRCode.toDataURL(url, { margin: 1, width: 240 }).then(setQrDataUrl);
+
+    // Best-effort Purchase signal: this manual-payment flow has no
+    // automatic payment callback (see pay-manual's top comment), so the
+    // manage page going "active" is the closest confirmed proxy we have.
+    // Guarded by a localStorage flag per gift so repeat visits to an
+    // already-active gift don't refire it.
+    if (gift.status === "active") {
+      const key = `dg_purchase_fired_${gift.id}`;
+      try {
+        if (!window.localStorage.getItem(key)) {
+          trackMetaEvent("Purchase", { value: 199, currency: "INR", content_name: gift.occasion });
+          window.localStorage.setItem(key, "1");
+        }
+      } catch {
+        // Storage unavailable — fire once for this render; acceptable rare over-count.
+        trackMetaEvent("Purchase", { value: 199, currency: "INR", content_name: gift.occasion });
+      }
+    }
   }, [gift]);
 
   if (notFound) {

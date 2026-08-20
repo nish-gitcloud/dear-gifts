@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useSearchParams, useParams } from "next/navigation";
 import Link from "next/link";
 import { giftReferenceCode } from "@/lib/paymentRef";
+import { trackMetaEvent } from "@/lib/metaPixel";
 
 /**
  * Temporary manual-payment step (see lib/env.ts's `manualPayment` config
@@ -72,6 +73,7 @@ export default function PayManualPage() {
             href={paymentLinkUrl}
             target="_blank"
             rel="noopener noreferrer"
+            onClick={() => trackMetaEvent("InitiateCheckout", { value: 199, currency: "INR", content_name: "manual_payment_link" })}
             className="mt-4 block w-full rounded-full bg-[#E85C7B] px-5 py-3 text-center text-sm font-semibold text-white"
           >
             Pay ₹199 Now

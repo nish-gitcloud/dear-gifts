@@ -9,6 +9,7 @@ import { useWizardStore } from "@/hooks/useWizardStore";
 import { calculateWizardPrice } from "@/lib/wizardPricing";
 import { getWrap } from "@/config/wraps";
 import { trackEvent } from "@/lib/analyticsClient";
+import { trackMetaEvent } from "@/lib/metaPixel";
 import { Button } from "@/components/ui/Button";
 import { WrapIllustration, WRAP_COLORS, FALLBACK_WRAP_PALETTE } from "@/components/creator/fields/WrapPickerField";
 
@@ -62,6 +63,7 @@ export default function SummaryPage({ params }: { params: Promise<{ occasion: st
 
   async function payAndCreate() {
     trackEvent("checkout_started", { occasion: occasion!.id });
+    trackMetaEvent("InitiateCheckout", { value: price.total, currency: "INR", content_name: occasion!.id });
     setLoading(true);
     setError(null);
     try {
